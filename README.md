@@ -1,16 +1,14 @@
-# README
+# Moody
 
-## About
+Spotify uses too much RAM. Moody doesn't.
 
-This is the official Wails Svelte-TS template.
+A lightweight desktop music player built with Go + Wails that streams audio via yt-dlp and mpv. Create playlists, favorite songs, upload custom album art, and actually have memory left over for the rest of your computer.
 
-## Live Development
+## Requirements
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+- [mpv](https://mpv.io/)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 
-## Building
+## Usage
 
-To build a redistributable, production mode package, use `wails build`.
+Search for any song by name and hit **PLAY**, or build playlists in the **Library** tab and let it run.
