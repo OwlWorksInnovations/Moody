@@ -1,0 +1,70 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap");
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+html,
+body {
+    height: 100%;
+}
+body {
+    font-family: "Outfit", sans-serif;
+    background: #252422;
+    color: #fffcf2;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+}
+#app {
+    height: 100vh;
+    overflow-y: auto;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+    width: 5px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(204, 197, 185, 0.3);
+    border-radius: 2px;
+}
+
+/* ── Range input reset ── */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+    background: rgba(255, 252, 242, 0.18);
+    height: 3px;
+    border-radius: 2px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    background: #ccc5b9;
+    margin-top: -4.5px;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+input[type="range"]:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+}
+
+input[type="range"]:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
