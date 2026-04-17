@@ -10,6 +10,10 @@ export function CreatePlaylist(arg1) {
   return window['go']['main']['App']['CreatePlaylist'](arg1);
 }
 
+export function CreatePlaylistFromExportify(arg1, arg2) {
+  return window['go']['main']['App']['CreatePlaylistFromExportify'](arg1, arg2);
+}
+
 export function DeletePlaylist(arg1) {
   return window['go']['main']['App']['DeletePlaylist'](arg1);
 }
@@ -20,6 +24,10 @@ export function GetPlaylistState() {
 
 export function GetState() {
   return window['go']['main']['App']['GetState']();
+}
+
+export function ImportExportify(arg1, arg2) {
+  return window['go']['main']['App']['ImportExportify'](arg1, arg2);
 }
 
 export function NextSong() {
@@ -40,6 +48,10 @@ export function PrevSong() {
 
 export function RemoveSongFromPlaylist(arg1, arg2) {
   return window['go']['main']['App']['RemoveSongFromPlaylist'](arg1, arg2);
+}
+
+export function ReorderSong(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReorderSong'](arg1, arg2, arg3);
 }
 
 export function SeekBackward() {

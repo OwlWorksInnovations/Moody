@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -353,6 +355,43 @@ func (a *App) RemoveSongFromPlaylist(plID int, songIdx int) PlaylistState {
 	return a.GetPlaylistState()
 }
 
+// ReorderSong moves the song at fromIdx to toIdx within the playlist identified
+// by plID. Both indices are 0-based. If either index is out of range, or they
+// are equal, the call is a no-op.
+func (a *App) ReorderSong(plID int, fromIdx int, toIdx int) PlaylistState {
+	a.plMu.Lock()
+	idx := a.findPlaylistIdx(plID)
+	if idx >= 0 {
+		songs := a.playlists[idx].Songs
+		if fromIdx >= 0 && fromIdx < len(songs) &&
+			toIdx >= 0 && toIdx < len(songs) &&
+			fromIdx != toIdx {
+
+			song := songs[fromIdx]
+
+			// Remove from original position.
+			songs = append(songs[:fromIdx], songs[fromIdx+1:]...)
+
+			// When moving forward, the target shifts left by one because of
+			// the removal above.
+			if fromIdx < toIdx {
+				toIdx--
+			}
+
+			// Insert at the new position.
+			songs = append(songs[:toIdx],
+				append([]PlaylistSong{song}, songs[toIdx:]...)...)
+
+			a.playlists[idx].Songs = songs
+		}
+	}
+	a.plMu.Unlock()
+
+	a.savePlaylists()
+	a.emitPlaylistState()
+	return a.GetPlaylistState()
+}
+
 // GetPlaylistState returns a deep copy of the current playlist state so the
 // caller cannot mutate internal slice state.
 func (a *App) GetPlaylistState() PlaylistState {
@@ -412,6 +451,101 @@ func (a *App) ensureFavoritesPlaylist() {
 	a.playlists = append([]Playlist{fav}, a.playlists...)
 	a.plMu.Unlock()
 	a.savePlaylists()
+}
+
+// ImportExportify parses the content of an Exportify CSV file and appends the
+// tracks to the playlist with the given ID.
+//
+// Exportify columns detected by header name (robust to optional extra columns):
+//
+//	"Track Name"    – the song title
+//	"Artist Name(s)" – comma-separated artist names
+//
+// Each track is stored as "Artist Name(s) - Track Name" so yt-dlp can find it.
+func (a *App) ImportExportify(plID int, csvContent string) PlaylistState {
+	songs, err := parseExportifyCSV(csvContent)
+	if err != nil || len(songs) == 0 {
+		return a.GetPlaylistState()
+	}
+
+	a.plMu.Lock()
+	idx := a.findPlaylistIdx(plID)
+	if idx >= 0 {
+		a.playlists[idx].Songs = append(a.playlists[idx].Songs, songs...)
+	}
+	a.plMu.Unlock()
+
+	a.savePlaylists()
+	a.emitPlaylistState()
+	return a.GetPlaylistState()
+}
+
+// CreatePlaylistFromExportify creates a new playlist with the given name and
+// fills it with tracks parsed from an Exportify CSV.
+func (a *App) CreatePlaylistFromExportify(name string, csvContent string) PlaylistState {
+	songs, err := parseExportifyCSV(csvContent)
+	if err != nil {
+		return a.GetPlaylistState()
+	}
+
+	a.plMu.Lock()
+	a.nextPLID++
+	pl := Playlist{
+		ID:    a.nextPLID,
+		Name:  name,
+		Songs: songs,
+	}
+	a.playlists = append(a.playlists, pl)
+	a.plMu.Unlock()
+
+	a.savePlaylists()
+	a.emitPlaylistState()
+	return a.GetPlaylistState()
+}
+
+// parseExportifyCSV parses an Exportify-format CSV string and returns a slice
+// of PlaylistSong values. Column positions are inferred from the header row so
+// the function is resilient to optional extra columns being present.
+func parseExportifyCSV(csvContent string) ([]PlaylistSong, error) {
+	r := csv.NewReader(strings.NewReader(csvContent))
+	r.LazyQuotes = true
+	rows, err := r.ReadAll()
+	if err != nil || len(rows) < 2 {
+		return nil, err
+	}
+
+	// Locate the columns we care about by header name.
+	trackCol, artistCol := -1, -1
+	for i, h := range rows[0] {
+		switch strings.TrimSpace(h) {
+		case "Track Name":
+			trackCol = i
+		case "Artist Name(s)":
+			artistCol = i
+		}
+	}
+	if trackCol < 0 {
+		return nil, fmt.Errorf("no 'Track Name' column found")
+	}
+
+	var songs []PlaylistSong
+	for _, row := range rows[1:] {
+		if trackCol >= len(row) {
+			continue
+		}
+		track := strings.TrimSpace(row[trackCol])
+		if track == "" {
+			continue
+		}
+		name := track
+		if artistCol >= 0 && artistCol < len(row) {
+			if artist := strings.TrimSpace(row[artistCol]); artist != "" {
+				name = artist + " - " + track
+			}
+		}
+		songs = append(songs, PlaylistSong{Name: name})
+	}
+	return songs, nil
 }
 
 // PlayPlaylist starts playback of the playlist with the given ID at songIdx.

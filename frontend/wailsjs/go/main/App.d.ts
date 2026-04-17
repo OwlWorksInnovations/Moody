@@ -6,11 +6,15 @@ export function AddSongToPlaylist(arg1:number,arg2:string):Promise<main.Playlist
 
 export function CreatePlaylist(arg1:string):Promise<main.PlaylistState>;
 
+export function CreatePlaylistFromExportify(arg1:string,arg2:string):Promise<main.PlaylistState>;
+
 export function DeletePlaylist(arg1:number):Promise<main.PlaylistState>;
 
 export function GetPlaylistState():Promise<main.PlaylistState>;
 
 export function GetState():Promise<main.PlayerState>;
+
+export function ImportExportify(arg1:number,arg2:string):Promise<main.PlaylistState>;
 
 export function NextSong():Promise<string>;
 
@@ -21,6 +25,8 @@ export function PlaySong(arg1:string):Promise<string>;
 export function PrevSong():Promise<string>;
 
 export function RemoveSongFromPlaylist(arg1:number,arg2:number):Promise<main.PlaylistState>;
+
+export function ReorderSong(arg1:number,arg2:number,arg3:number):Promise<main.PlaylistState>;
 
 export function SeekBackward():Promise<string>;
 

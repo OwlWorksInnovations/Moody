@@ -11,4 +11,4 @@ A lightweight desktop music player built with Go + Wails that streams audio via 
 
 ## Usage
 
-Search for any song by name and hit **PLAY**, or build playlists in the **Library** tab and let it run.
+Search for any song by name and hit **PLAY**, or build playlists in the **Library** tab and let it run. Import spotify playlist from exportify.

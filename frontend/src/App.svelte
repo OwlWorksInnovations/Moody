@@ -19,6 +19,9 @@
         NextSong,
         PrevSong,
         SetPlaylistAlbumArt,
+        CreatePlaylistFromExportify,
+        ImportExportify,
+        ReorderSong,
     } from "../wailsjs/go/main/App";
     import { EventsOn } from "../wailsjs/runtime/runtime";
     import type { main } from "../wailsjs/go/models";
@@ -57,6 +60,12 @@
     let addSongInput = "";
     let artInput: HTMLInputElement;
     let artUploadPLId: number | null = null;
+    let csvInput: HTMLInputElement; // hidden file input for CSV
+    let csvImportMode: "new" | "existing" = "new"; // which flow triggered the picker
+
+    // ── Drag-to-reorder state ─────────────────────────────────────────────────
+    let dragSrcIdx: number = -1;
+    let dragOverIdx: number = -1;
 
     // ── Event listeners ──────────────────────────────────────────────────────
     let unlistenState: () => void;
@@ -193,6 +202,69 @@
         }
     }
 
+    // ── Exportify import ─────────────────────────────────────────────────────
+    function triggerCSVImport(mode: "new" | "existing") {
+        csvImportMode = mode;
+        if (csvInput) csvInput.value = "";
+        csvInput?.click();
+    }
+
+    async function handleCSVFile(e: Event) {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        const text = await file.text();
+        if (csvImportMode === "new") {
+            // Strip the .csv extension for the playlist name
+            const name =
+                file.name.replace(/\.csv$/i, "").trim() || "Imported Playlist";
+            plState = await CreatePlaylistFromExportify(name, text);
+            // Navigate to the newly created playlist
+            const newPL = plState.playlists[plState.playlists.length - 1];
+            if (newPL) goPlaylist(newPL.id);
+        } else {
+            plState = await ImportExportify(selectedPLIdSafe, text);
+        }
+    }
+
+    // ── Song drag-to-reorder ─────────────────────────────────────────────────
+    function onDragStart(e: DragEvent, i: number) {
+        dragSrcIdx = i;
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", String(i));
+        }
+    }
+
+    function onDragOver(e: DragEvent, i: number) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        dragOverIdx = i;
+    }
+
+    function onDragLeave(e: DragEvent) {
+        // Only clear if we're leaving the row entirely (not entering a child)
+        const rel = e.relatedTarget as Node | null;
+        if (!(e.currentTarget as HTMLElement).contains(rel)) {
+            dragOverIdx = -1;
+        }
+    }
+
+    async function onDrop(e: DragEvent, i: number) {
+        e.preventDefault();
+        dragOverIdx = -1;
+        if (dragSrcIdx < 0 || dragSrcIdx === i) {
+            dragSrcIdx = -1;
+            return;
+        }
+        plState = await ReorderSong(selectedPLIdSafe, dragSrcIdx, i);
+        dragSrcIdx = -1;
+    }
+
+    function onDragEnd() {
+        dragSrcIdx = -1;
+        dragOverIdx = -1;
+    }
+
     // ── Album art upload ─────────────────────────────────────────────────────
     function triggerArtUpload(plID: number) {
         artUploadPLId = plID;
@@ -249,6 +321,14 @@
     accept="image/*"
     style="display:none"
     on:change={handleArtFile}
+/>
+<!-- Hidden file input for Exportify CSV imports -->
+<input
+    bind:this={csvInput}
+    type="file"
+    accept=".csv"
+    style="display:none"
+    on:change={handleCSVFile}
 />
 
 <div class="shell">
@@ -419,13 +499,23 @@
             <div class="page page-library">
                 <div class="library-header">
                     <h1 class="page-title">YOUR LIBRARY</h1>
-                    <button
-                        class="icon-btn"
-                        on:click={() => (showNewPL = !showNewPL)}
-                        title="New playlist"
-                    >
-                        <Icon name="plus" size={15} />
-                    </button>
+                    <div class="library-header-actions">
+                        <button
+                            class="import-btn"
+                            on:click={() => triggerCSVImport("new")}
+                            title="Import playlist from Exportify CSV"
+                        >
+                            <Icon name="upload" size={14} />
+                            Import from Exportify
+                        </button>
+                        <button
+                            class="icon-btn"
+                            on:click={() => (showNewPL = !showNewPL)}
+                            title="New playlist"
+                        >
+                            <Icon name="plus" size={15} />
+                        </button>
+                    </div>
                 </div>
 
                 {#if showNewPL}
@@ -586,6 +676,15 @@
                                     <Icon name="trash2" size={15} />
                                     Delete
                                 </button>
+                                <button
+                                    class="import-songs-btn"
+                                    on:click={() =>
+                                        triggerCSVImport("existing")}
+                                    title="Import songs from Exportify CSV"
+                                >
+                                    <Icon name="upload" size={14} />
+                                    Import Songs
+                                </button>
                             {/if}
                         </div>
                     </div>
@@ -606,7 +705,18 @@
                                 class:song-row-active={activePLIdSafe ===
                                     selectedPLIdSafe &&
                                     plState.activeSong === i}
+                                class:drag-over={dragOverIdx === i}
+                                class:dragging={dragSrcIdx === i}
+                                draggable={true}
+                                on:dragstart={(e) => onDragStart(e, i)}
+                                on:dragover={(e) => onDragOver(e, i)}
+                                on:dragleave={onDragLeave}
+                                on:drop={(e) => onDrop(e, i)}
+                                on:dragend={onDragEnd}
                             >
+                                <span class="drag-handle">
+                                    <Icon name="gripVertical" size={14} />
+                                </span>
                                 <span class="song-idx">{i + 1}</span>
                                 <button
                                     class="song-play-btn"
@@ -1248,6 +1358,57 @@
         border-color: var(--palette-accent);
     }
 
+    .library-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .import-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: transparent;
+        border: 1px solid var(--glass-border);
+        color: var(--text-secondary);
+        padding: 0.35rem 0.75rem;
+        border-radius: 4px;
+        font-family: "Outfit", sans-serif;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+            color var(--transition),
+            border-color var(--transition);
+    }
+    .import-btn:hover {
+        color: var(--palette-accent);
+        border-color: var(--palette-accent);
+    }
+
+    .import-songs-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: transparent;
+        border: 1px solid var(--glass-border);
+        color: var(--text-secondary);
+        padding: 0.65rem 1.2rem;
+        border-radius: 30px;
+        font-family: "Outfit", sans-serif;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+            color var(--transition),
+            border-color var(--transition);
+    }
+    .import-songs-btn:hover {
+        color: var(--palette-accent);
+        border-color: var(--palette-accent);
+    }
+
     .new-pl-row {
         display: flex;
         gap: 0.5rem;
@@ -1579,6 +1740,26 @@
     }
     .song-row.song-row-active {
         background: rgba(204, 197, 185, 0.07);
+    }
+
+    .drag-handle {
+        color: var(--text-secondary);
+        opacity: 0.3;
+        cursor: grab;
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        padding: 0 0.1rem;
+        transition: opacity var(--transition);
+    }
+    .song-row:hover .drag-handle {
+        opacity: 0.7;
+    }
+    .song-row.dragging {
+        opacity: 0.4;
+    }
+    .song-row.drag-over {
+        border-top: 2px solid var(--palette-accent);
     }
 
     .song-idx {
