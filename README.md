@@ -1,8 +1,8 @@
 # Moody
 
-Spotify uses too much RAM. Moody doesn't.
+Spotify uses too much RAM. Moody doesn't. Moody (3mb-13mb) vs Spotify (500mb-1200mb)
 
-A lightweight desktop music player built with Go + Wails that streams audio via yt-dlp and mpv. Create playlists, favorite songs, upload custom album art, and actually have memory left over for the rest of your computer.
+A lightweight desktop music player built with Go + Wails that streams audio via yt-dlp and mpv. Create playlists, favorite songs, upload custom album art, and have memory left over for the rest of your computer.
 
 ## Requirements
 
