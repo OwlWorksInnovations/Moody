@@ -296,6 +296,13 @@
         else page = "library";
     }
 
+    // Installing dependencies
+    let installingDep = ""
+
+    EventsOn("installing-deps", (name) => {
+        installingDep = name
+    })
+
     onMount(() => {
         unlistenState = EventsOn("state", (s: main.PlayerState) => {
             state = s;
@@ -330,6 +337,16 @@
     style="display:none"
     on:change={handleCSVFile}
 />
+
+{#if installingDep}
+    <div class="install-overlay">
+        <div class="install-box">
+            <div class="spinner-ring"></div>
+            <p class="install-name">Installing {installingDep}…</p>
+            <p class="install-sub">The app will restart automatically when done.</p>
+        </div>
+    </div>
+{/if}
 
 <div class="shell">
     <!-- ═══════════════════════════════════════
@@ -2068,5 +2085,37 @@
             width: auto;
             flex-shrink: 1;
         }
+    }
+
+    .install-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(27, 25, 23, 0.92);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    }
+
+    .install-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 8px;
+        padding: 2.5rem 3.5rem;
+    }
+
+    .install-name {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .install-sub {
+        font-size: 0.78rem;
+        color: var(--text-secondary);
     }
 </style>

@@ -6,9 +6,11 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +20,7 @@ import (
 	winio "github.com/Microsoft/go-winio"
 	"github.com/OwlWorksInnovations/go-packages/configpath"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/sys/windows/registry"
 )
 
 const playlistsFile = ".moody/playlists.json"
@@ -103,11 +106,33 @@ func NewApp() *App {
 	}
 }
 
-// startup is called by Wails when the application starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	addWingetLinksToPath()
+}
+
+func (a *App) domReady(ctx context.Context) {
+	installed, err := checkAndInstallDeps(ctx)
+	if err != nil {
+		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+			Type:    runtime.ErrorDialog,
+			Title:   "Missing dependencies",
+			Message: err.Error(),
+		})
+		return
+	}
+	if installed {
+		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+			Type:    runtime.InfoDialog,
+			Title:   "Installation complete",
+			Message: "Dependencies installed successfully. Please relaunch the app.",
+		})
+		os.Exit(0)
+	}
+
 	a.loadPlaylists()
 	a.ensureFavoritesPlaylist()
+	a.emitPlaylistState()
 }
 
 // shutdown is called by Wails when the application is closing.
@@ -988,4 +1013,152 @@ func (a *App) emitPlaylistState() {
 	}
 	ps := a.GetPlaylistState()
 	runtime.EventsEmit(a.ctx, "playlist", ps)
+}
+
+// checkAndInstallDeps ensures mpv and yt-dlp are available on the system.
+// If either is missing it attempts a silent winget install. Returns an error
+// if a tool is still absent after the install attempt.
+func checkAndInstallDeps(ctx context.Context) (installed bool, err error) {
+	addWingetLinksToPath()
+
+	tools := []struct {
+		name   string
+		winget string
+	}{
+		{"mpv", "mpv-player.mpv-CI.MSVC"},
+		{"yt-dlp", "yt-dlp.yt-dlp"},
+	}
+
+	for _, t := range tools {
+		if isInstalled(t.name) {
+			continue
+		}
+
+		runtime.EventsEmit(ctx, "installing-deps", t.name)
+
+		cmd := exec.Command("winget", "install", "--id", t.winget,
+			"--silent", "--accept-package-agreements",
+			"--accept-source-agreements")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				code := uint32(exitErr.ExitCode())
+				if code != 0x8a150014 && code != 0x8a15002b {
+					return false, fmt.Errorf("failed to install %s: %w\n%s", t.name, err, string(out))
+				}
+			} else {
+				return false, fmt.Errorf("failed to install %s: %w\n%s", t.name, err, string(out))
+			}
+		}
+
+		// Only mark as installed if it's actually findable now
+		addWingetLinksToPath()
+		if isInstalled(t.name) {
+			installed = true
+		}
+	}
+
+	runtime.EventsEmit(ctx, "installing-deps", "")
+	return installed, nil
+}
+
+// isInstalled reports whether the named binary is findable on PATH.
+func isInstalled(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+func addToPath(name string) error {
+	// Common winget install locations to search
+	roots := []string{
+		os.Getenv("LOCALAPPDATA") + `\Microsoft\WinGet\Packages`,
+		os.Getenv("PROGRAMFILES") + `\`,
+		os.Getenv("PROGRAMFILES(X86)") + `\`,
+	}
+
+	var found string
+	for _, root := range roots {
+		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || found != "" {
+				return nil
+			}
+			if !d.IsDir() && strings.EqualFold(d.Name(), name+".exe") {
+				found = filepath.Dir(path)
+				return fs.SkipAll
+			}
+			return nil
+		})
+		if found != "" {
+			break
+		}
+	}
+
+	if found == "" {
+		return fmt.Errorf("could not locate %s.exe on disk", name)
+	}
+
+	// Append to the user-level PATH in the registry (no admin required).
+	k, err := registry.OpenKey(registry.CURRENT_USER,
+		`Environment`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return fmt.Errorf("failed to open registry: %w", err)
+	}
+	defer k.Close()
+
+	current, _, _ := k.GetStringValue("Path")
+	if strings.Contains(strings.ToLower(current), strings.ToLower(found)) {
+		return nil // already there
+	}
+
+	newPath := current + ";" + found
+	if err := k.SetStringValue("Path", newPath); err != nil {
+		return fmt.Errorf("failed to write registry: %w", err)
+	}
+
+	// Tell the current process about it too so LookPath works immediately.
+	_ = os.Setenv("PATH", os.Getenv("PATH")+";"+found)
+
+	return nil
+}
+
+func addWingetLinksToPath() {
+	local := os.Getenv("LOCALAPPDATA")
+	dirs := []string{
+		local + `\Microsoft\WinGet\Links`,
+		local + `\Microsoft\WinGet\Packages\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe`,
+	}
+
+	current := os.Getenv("PATH")
+	for _, dir := range dirs {
+		if !strings.Contains(strings.ToLower(current), strings.ToLower(dir)) {
+			current = current + ";" + dir
+		}
+	}
+	_ = os.Setenv("PATH", current)
+
+	// Persist to registry so child processes (and restarts) inherit it
+	k, err := registry.OpenKey(registry.CURRENT_USER,
+		`Environment`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return
+	}
+	defer k.Close()
+
+	regPath, _, _ := k.GetStringValue("Path")
+	for _, dir := range dirs {
+		if !strings.Contains(strings.ToLower(regPath), strings.ToLower(dir)) {
+			regPath = regPath + ";" + dir
+		}
+	}
+	_ = k.SetStringValue("Path", regPath)
+}
+
+func restartApp() {
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe)
+	cmd.Env = os.Environ()
+	cmd.Start()
+	os.Exit(0)
 }

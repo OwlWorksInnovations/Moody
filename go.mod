@@ -6,6 +6,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/OwlWorksInnovations/go-packages/configpath v1.0.0
 	github.com/wailsapp/wails/v2 v2.12.0
+	golang.org/x/sys v0.44.0
 )
 
 require (
@@ -35,7 +36,6 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 )
 
